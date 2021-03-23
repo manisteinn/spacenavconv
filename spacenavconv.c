@@ -7,6 +7,10 @@
 
 #define _POSIX_C_SOURCE 2
 
+// ugly scroll hack
+#include <unistd.h>
+#define DELAY 10000
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -28,7 +32,7 @@
 #define NUM_BTNS 9
 #define UNMAPPED 0xFFFF
 
-enum ControllerType {INVALID, JOYSTICK, RELATIVE, TABLET, MOUSE};
+enum ControllerType {INVALID, JOYSTICK, RELATIVE, TABLET, MOUSE, SCROLL};
 enum AxisMode {REL, ABS};
 struct ControllerMappings {
 	/* Device settings */
@@ -116,6 +120,21 @@ const struct ControllerMappings MAP_MOUSE = {
 		BTN_LEFT, UNMAPPED, BTN_5, BTN_6, BTN_7, BTN_8, BTN_9, BTN_MIDDLE, BTN_RIGHT
 	}
 };
+const struct ControllerMappings MAP_SCROLL = {
+	.DevBusType = BUS_USB,
+	.DevVendor = 0x0123,
+	.DevProduct = 3,
+	.DevVersion = 4,
+	.Axis = {UNMAPPED, UNMAPPED, UNMAPPED, REL_WHEEL, UNMAPPED, REL_HWHEEL},
+	//.Axis = {REL_X, UNMAPPED, REL_Y, REL_HWHEEL, REL_WHEEL, UNMAPPED},
+	.AxisMode = REL,
+	.AxisDiv = {100, 0, -100, -127, 100, 127},
+	.AxisMin = {-4096, -4096, 0, -4096, -4096, 0},
+	.AxisMax = {4096, 4096, 0, 4096, 4096, 0},
+	.Button = {
+		BTN_LEFT, UNMAPPED, BTN_5, BTN_6, BTN_7, BTN_8, BTN_9, BTN_MIDDLE, BTN_RIGHT
+	}
+};
 
 enum ControllerType type_from_string(char *option)
 {
@@ -127,6 +146,8 @@ enum ControllerType type_from_string(char *option)
 		return TABLET;
 	} else if (strcmp(option, "mouse") == 0) {
 		return MOUSE;
+	} else if (strcmp(option, "scroll") == 0) {
+		return SCROLL;
 	} else {
 		return INVALID;
 	}
@@ -141,6 +162,7 @@ bool set_mappings(enum ControllerType type, struct ControllerMappings *outmap)
 	case RELATIVE: src = &MAP_JOYSTICK_REL; break;
 	case TABLET: src = &MAP_TABLET; break;
 	case MOUSE: src = &MAP_MOUSE; break;
+	case SCROLL: src = &MAP_SCROLL; break;
 	default: return false;
 	}
 	
@@ -183,6 +205,29 @@ bool apply_mappings(
 		uidev->absmin[axis] = min;
 		uidev->absmax[axis] = max;
 	}
+
+	/* Check whether to use new uinput interface */
+	int version, rc;
+	rc = ioctl(f_uinput, UI_GET_VERSION, &version);
+
+	if (rc == 0 && version >= 5) {
+		puts("Using new uinput interface");
+		struct uinput_setup usetup;
+
+		memset(&usetup, 0, sizeof(usetup));
+
+		/* Set fake USB device name */
+		snprintf(usetup.name, UINPUT_MAX_NAME_SIZE, "Spaceball 2003");
+		usetup.id.bustype = inmap->DevBusType;
+		usetup.id.vendor = inmap->DevVendor;
+		usetup.id.product = inmap->DevProduct;
+		usetup.id.version = inmap->DevVersion;
+
+		ioctl(f_uinput, UI_DEV_SETUP, &usetup);
+		ioctl(f_uinput, UI_DEV_CREATE);
+
+		return true;
+	}
 	
 	/* Set fake USB device name */
 	snprintf(uidev->name, UINPUT_MAX_NAME_SIZE, "Spaceball 2003");
@@ -207,6 +252,7 @@ void print_help()
 	puts("\trelative: 6 axis joystick with raw relative output.");
 	puts("\ttablet: Wacom-like drawing tablet w/ pressure and stroke direction.");
 	puts("\tmouse: Standard 3 button mouse.");
+	puts("\tscroll: Scrolling only");
 	puts("v: Show version and exit.");
 	puts("h: Show this screen and exit.");
 }
@@ -313,6 +359,7 @@ int main(int argc, char **argv)
 
 	/* Main loop */
 	while (spnav_wait_event(&sev)) {
+		usleep(DELAY); // ugly scroll hack
 		memset(&ev, 0, sizeof(ev));
 		
 		if (sev.type == SPNAV_EVENT_MOTION) {

@@ -22,3 +22,21 @@ Emulates a 3-button mouse. Button 0 (on the ball) left clicks, 7 and 8 middle an
 # How to run
 
 SpaceNav-Conv requires a Linux system. It also requires that you have spacenavd installed and running. Libspacenav is the only build dependency, so you can simply compile this and run it. You will most likely need to run this as root, as it creats an input device through /dev/uinput, which requires root for writing.
+
+2021 changes by manisteinn
+--------------------------
+A quick hack to add scroll mode (H/V scroll by tilting) with usleep delay to limit rate  
+Adapted to [new uinput interface](https://www.kernel.org/doc/html/latest/input/uinput.html#uinput-old-interface), absolute mode unchanged and not functional.
+
+### ABS mode info
+[UI\_ABS\_SETUP](https://github.com/torvalds/linux/blob/master/include/uapi/linux/uinput.h#L109)  
+[uidev > abs\_setup example for reference](https://github.com/rfc2822/GfxTablet/pull/95/commits/8c2421bc64d3d69688696c05bccea5d8fd9d73c5)
+
+### Build dependencies for ubuntu 20.04
+make
+gcc
+libspnav-dev
+libspnav0
+spacenavd
+libx11-dev
+
